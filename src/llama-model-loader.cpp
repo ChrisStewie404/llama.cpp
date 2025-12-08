@@ -771,12 +771,19 @@ const struct ggml_tensor * llama_model_loader::check_tensor_dims(const std::stri
 
     {
         bool is_ok = true;
-        for (size_t i = 0; i < GGML_MAX_DIMS; ++i) {
-            if ((i < ne.size() && ne[i] != cur->ne[i]) || (i >= ne.size() && cur->ne[i] != 1)) {
-                is_ok = false;
-                break;
-            }
+
+        // TODO: temporary fix for FFN weights shape check
+        if (name.find(".ffn_gate.weight") == std::string::npos 
+            && name.find(".ffn_up.weight") == std::string::npos
+            && name.find(".ffn_down.weight") == std::string::npos) {
+            for (size_t i = 0; i < GGML_MAX_DIMS; ++i) {
+                if ((i < ne.size() && ne[i] != cur->ne[i]) || (i >= ne.size() && cur->ne[i] != 1)) {
+                    is_ok = false;
+                    break;
+                }
+            }                
         }
+
         if (!is_ok) {
             throw std::runtime_error(
                     format("%s: tensor '%s' has wrong shape; expected %s, got %s",
@@ -1021,6 +1028,58 @@ bool llama_model_loader::load_all_data(
 
     for (struct ggml_tensor * cur = ggml_get_first_tensor(ctx); cur != NULL; cur = ggml_get_next_tensor(ctx, cur)) {
         const auto * weight = get_weight(ggml_get_name(cur));
+
+        std::string name = ggml_get_name(cur);
+        if (name.find(".ffn_gate.weight") != std::string::npos 
+            || name.find(".ffn_up.weight") != std::string::npos
+            || name.find(".ffn_down.weight") != std::string::npos) {
+            // slice to [hidden_size, target_ffn_dim]
+            size_t n_size = ggml_nbytes(cur);
+
+            if (use_mmap) {
+                const auto & mapping = mappings.at(weight->idx);
+                uint8_t * src = (uint8_t *) mapping->addr() + weight->offs;
+                
+                LLAMA_LOG_INFO("%s: loading sliced tensor %s with cur shape: %s weight shape: %s\n", __func__, name.c_str(), 
+                            llama_format_tensor_shape(cur).c_str(),
+                            llama_format_tensor_shape(weight->tensor).c_str());
+
+                // You must ensure cur->data is allocated! 
+                // If using mmap buffer, you might need to allocate a separate buffer 
+                // because you can't point to the file directly anymore.
+                if (cur->data == nullptr) {
+                    // Allocate memory for the slice (this is a simplification)
+                    cur->data = malloc(n_size); 
+                }
+
+                size_t row_size_mem = cur->ne[0] * ggml_element_size(cur);
+                size_t row_size_file = weight->tensor->ne[0] * ggml_element_size(cur);
+
+                for (int i = 0; i < cur->ne[1]; i++) {
+                    memcpy((uint8_t*)cur->data + i * row_size_mem, 
+                            src + i * row_size_file, 
+                            row_size_mem);
+                }
+            } else {
+                // File reading logic
+                const auto & file = files.at(weight->idx);
+                file->seek(weight->offs, SEEK_SET);
+                
+                size_t row_size_mem = cur->ne[0] * ggml_element_size(cur);
+                size_t row_size_file = weight->tensor->ne[0] * ggml_element_size(cur);
+                
+                for (int i = 0; i < cur->ne[1]; i++) {
+                    // Read the slice
+                    file->read_raw((uint8_t*)cur->data + i * row_size_mem, row_size_mem);
+                    // Skip the rest of the row in the file
+                    file->seek(row_size_file - row_size_mem, SEEK_CUR);
+                }
+            }
+
+            size_done += n_size;
+            continue;
+        }
+
         if (weight == nullptr) {
             // this can happen with split experts models
             continue;
