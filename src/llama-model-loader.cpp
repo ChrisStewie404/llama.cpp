@@ -519,6 +519,19 @@ llama_model_loader::llama_model_loader(
         n_elements += ggml_nelements(cur);
         n_bytes    += ggml_nbytes(cur);
         weights_map.emplace(tensor_name, llama_tensor_weight(files.back().get(), 0, meta.get(), cur));
+        if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
+            tensor_name.find(".ffn_up.weight") != std::string::npos ||
+            tensor_name.find(".ffn_down.weight") != std::string::npos) {
+            std::vector<int64_t> new_ne = get_tensor_dims(tensor_name);
+            if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
+                tensor_name.find(".ffn_up.weight") != std::string::npos) {
+                new_ne[1] /= 2;
+            }
+            else {
+                new_ne[0] /= 2;
+            }
+            slice_tensor_dims(tensor_name, new_ne);
+        }
     }
     uint16_t n_split = 0;
     get_key(llm_kv(LLM_KV_SPLIT_COUNT), n_split, false);
@@ -581,6 +594,12 @@ llama_model_loader::llama_model_loader(
                 // make sure there is no duplicated tensor names
                 if (weights_map.find(tensor_name) != weights_map.end()) {
                     throw std::runtime_error(format("invalid model: tensor '%s' is duplicated", ggml_get_name(cur)));
+                }
+                if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
+                    tensor_name.find(".ffn_up.weight") != std::string::npos ||
+                    tensor_name.find(".ffn_down.weight") != std::string::npos) {
+                    const struct ggml_tensor * cur = get_tensor_meta(tensor_name.c_str());
+                    LLAMA_LOG("%s: found additonal tensor %s shape: %s\n", __func__, tensor_name.c_str(), llama_format_tensor_shape(cur).c_str());
                 }
                 n_elements += ggml_nelements(cur);
                 n_bytes    += ggml_nbytes(cur);
@@ -737,6 +756,17 @@ const llama_model_loader::llama_tensor_weight * llama_model_loader::get_weight(c
     return nullptr;
 }
 
+// SLICED-NEW START
+llama_model_loader::llama_tensor_weight * llama_model_loader::get_weight_unsafe(const char * name) {
+    auto pos = weights_map.find(name);
+    if (pos != weights_map.end()) {
+        return &pos->second;
+    }
+
+    return nullptr;
+}
+// SLICED-NEW END
+
 const llama_model_loader::llama_tensor_weight & llama_model_loader::require_weight(const char * name) const {
     const llama_tensor_weight * weight = get_weight(name);
     if (!weight) {
@@ -752,6 +782,16 @@ struct ggml_tensor * llama_model_loader::get_tensor_meta(const char * name) cons
     }
     return weight->tensor;
 }
+
+// SLICED-NEW START
+struct ggml_tensor * llama_model_loader::get_tensor_meta_unsafe(const char * name) {
+    auto * weight = get_weight_unsafe(name);
+    if (!weight) {
+        return nullptr;
+    }
+    return weight->tensor;
+}
+// SLICED-NEW END
 
 struct ggml_tensor * llama_model_loader::require_tensor_meta(const std::string & name) const {
     struct ggml_tensor * tensor = get_tensor_meta(name.c_str());
@@ -790,6 +830,31 @@ const struct ggml_tensor * llama_model_loader::check_tensor_dims(const std::stri
 
     return cur;
 }
+
+// SLICED-NEW START
+std::vector<int64_t> llama_model_loader::get_tensor_dims(const std::string & name) {
+    const struct ggml_tensor * cur = get_tensor_meta(name.c_str());
+    std::vector<int64_t> tensor_dims(GGML_MAX_DIMS);
+
+    {
+        for (size_t i = 0; i < GGML_MAX_DIMS; ++i) {
+            tensor_dims[i] = cur->ne[i];
+        }
+    }
+
+    return tensor_dims;
+}
+
+void llama_model_loader::slice_tensor_dims(const std::string & name, const std::vector<int64_t> & new_ne) {
+    struct ggml_tensor * cur = get_tensor_meta_unsafe(name.c_str());
+
+    {
+        for (size_t i = 0; i < GGML_MAX_DIMS; ++i) {
+            cur->ne[i] = new_ne[i];
+        }
+    }
+}
+// SLICED-NEW END
 
 struct ggml_tensor * llama_model_loader::create_tensor(struct ggml_context * ctx, const std::string & name, const std::initializer_list<int64_t> & ne, int flags) {
     LLAMA_LOG_DEBUG("%s: loading tensor %s\n", __func__, name.c_str());

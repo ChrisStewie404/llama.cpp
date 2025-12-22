@@ -137,13 +137,27 @@ struct llama_model_loader {
 
     const llama_tensor_weight * get_weight(const char * name) const;
 
+    // SLICED-NEW START
+    llama_tensor_weight * get_weight_unsafe(const char * name);
+    // SLICED-NEW END
+
     const llama_tensor_weight & require_weight(const char * name) const;
 
     struct ggml_tensor * get_tensor_meta(const char * name) const;
 
+    // SLICED-NEW START
+    struct ggml_tensor * get_tensor_meta_unsafe(const char * name);
+    // SLICED-NEW END
+
     struct ggml_tensor * require_tensor_meta(const std::string & name) const;
 
     const struct ggml_tensor * check_tensor_dims(const std::string & name, const std::vector<int64_t> & ne, bool required) const;
+
+    // SLICED-NEW START
+    std::vector<int64_t> get_tensor_dims(const std::string & name);
+
+    void slice_tensor_dims(const std::string & name, const std::vector<int64_t> & new_ne);
+    // SLICED-NEW END
 
     struct ggml_tensor * create_tensor(struct ggml_context * ctx, const std::string & name, const std::initializer_list<int64_t> & ne, int flags = 0);
 
