@@ -549,10 +549,10 @@ llama_model_loader::llama_model_loader(
             std::vector<int64_t> new_ne = get_tensor_dims(tensor_name);
             if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
                 tensor_name.find(".ffn_up.weight") != std::string::npos) {
-                new_ne[1] /= 2;
+                // new_ne[1] /= 2;
             }
             else {
-                new_ne[0] /= 2;
+                // new_ne[0] /= 2;
             }
             slice_tensor_dims(tensor_name, new_ne);
         }
@@ -1146,6 +1146,13 @@ bool llama_model_loader::load_all_data(
             GGML_ASSERT(buf_mmap || cur->data); // either we have a buffer to allocate the tensor in, or it is already allocated
             if (buf_mmap && cur->data == nullptr) {
                 ggml_backend_tensor_alloc(buf_mmap, cur, data);
+                // SLICED-NEW START
+                std::string tensor_name = std::string(cur->name);
+                if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
+                    tensor_name.find(".ffn_up.weight") != std::string::npos ||
+                    tensor_name.find(".ffn_down.weight") != std::string::npos) {
+                }
+                // SLICED-NEW END
                 if (lmlocks) {
                     const auto & lmlock = lmlocks->at(weight->idx);
                     lmlock->grow_to(weight->offs + n_size);
@@ -1156,6 +1163,13 @@ bool llama_model_loader::load_all_data(
                 mmap_used.second = std::max(mmap_used.second, weight->offs + n_size);
             } else {
                 ggml_backend_tensor_set(cur, data, 0, n_size);
+                // SLICED-NEW START
+                std::string tensor_name = std::string(cur->name);
+                if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
+                    tensor_name.find(".ffn_up.weight") != std::string::npos ||
+                    tensor_name.find(".ffn_down.weight") != std::string::npos) {
+                }
+                // SLICED-NEW END
             }
         } else {
             const auto & file = files.at(weight->idx);

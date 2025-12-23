@@ -15,6 +15,9 @@
 #include <cstring>
 #include <cassert>
 #include <cstdio>  // for GGML_ASSERT
+// SLICED-NEW START
+#include <string>
+// SLICED-NEW END
 
 #include "repack.h"
 
@@ -2524,6 +2527,14 @@ static void ggml_backend_cpu_repack_buffer_set_tensor(ggml_backend_buffer_t buff
     auto tensor_traits = (ggml::cpu::repack::tensor_traits_base *) tensor->extra;
     auto OK            = tensor_traits->repack(tensor, data, size);
 
+    // SLICED-NEW START
+    std::string tensor_name = std::string(tensor->name);
+    if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
+        tensor_name.find(".ffn_up.weight") != std::string::npos ||
+        tensor_name.find(".ffn_down.weight") != std::string::npos) {
+        GGML_LOG("Repacked tensor: %s of type %s\n", tensor->name, ggml_type_name(tensor->type));
+    }
+    // SLICED-NEW END
     GGML_ASSERT(OK == 0);
     GGML_UNUSED(buffer);
 }
