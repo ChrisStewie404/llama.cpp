@@ -1682,7 +1682,31 @@ static int repack_q4_K_to_q4_K_8_bl(struct ggml_tensor * t, int interleave_block
         tensor_name.find(".ffn_up.weight") != std::string::npos ||
         tensor_name.find(".ffn_down.weight") != std::string::npos) {
         // SLICED-NEW TODO: Implement sliced repacking for ffn weights of Gemma3n
-        
+        if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
+            tensor_name.find(".ffn_up.weight") != std::string::npos) {
+            int real_nblocks = nblocks;
+            nblocks *= 2;
+            for (int b = 0; b < nrow; b += nrows_interleaved) {
+                for (int64_t x = 0; x < real_nblocks; x++) {
+                    for (int i  = 0; i < nrows_interleaved; i++ ) {
+                        dst_tmp[i] = src[x + i * nblocks];
+                    }
+                    *dst++ = make_block_q4_Kx8(dst_tmp, interleave_block);
+                }
+                src += nrows_interleaved * nblocks;
+            }                 
+        }    
+        else {
+            for (int b = 0; b < nrow; b += nrows_interleaved) {
+                for (int64_t x = 0; x < nblocks; x++) {
+                    for (int i  = 0; i < nrows_interleaved; i++ ) {
+                        dst_tmp[i] = src[x + i * nblocks];
+                    }
+                    *dst++ = make_block_q4_Kx8(dst_tmp, interleave_block);
+                }
+                src += nrows_interleaved * nblocks;
+            }                
+        } 
         return 0;
     }
     // SLICED-NEW END

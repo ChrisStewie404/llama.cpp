@@ -549,10 +549,10 @@ llama_model_loader::llama_model_loader(
             std::vector<int64_t> new_ne = get_tensor_dims(tensor_name);
             if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
                 tensor_name.find(".ffn_up.weight") != std::string::npos) {
-                // new_ne[1] /= 2;
+                new_ne[1] /= 2;
             }
             else {
-                // new_ne[0] /= 2;
+                new_ne[0] /= 2;
             }
             slice_tensor_dims(tensor_name, new_ne);
         }
