@@ -1676,6 +1676,17 @@ static int repack_q4_K_to_q4_K_8_bl(struct ggml_tensor * t, int interleave_block
         return -1;
     }
 
+    // SLICED-NEW START
+    std::string tensor_name = std::string(t->name);
+    if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
+        tensor_name.find(".ffn_up.weight") != std::string::npos ||
+        tensor_name.find(".ffn_down.weight") != std::string::npos) {
+        // SLICED-NEW TODO: Implement sliced repacking for ffn weights of Gemma3n
+        
+        return 0;
+    }
+    // SLICED-NEW END
+
     for (int b = 0; b < nrow; b += nrows_interleaved) {
         for (int64_t x = 0; x < nblocks; x++) {
             for (int i  = 0; i < nrows_interleaved; i++ ) {
@@ -2532,7 +2543,6 @@ static void ggml_backend_cpu_repack_buffer_set_tensor(ggml_backend_buffer_t buff
     if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
         tensor_name.find(".ffn_up.weight") != std::string::npos ||
         tensor_name.find(".ffn_down.weight") != std::string::npos) {
-        GGML_LOG("Repacked tensor: %s of type %s\n", tensor->name, ggml_type_name(tensor->type));
     }
     // SLICED-NEW END
     GGML_ASSERT(OK == 0);
