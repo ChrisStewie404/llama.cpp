@@ -519,6 +519,7 @@ llama_model_loader::llama_model_loader(
         n_elements += ggml_nelements(cur);
         n_bytes    += ggml_nbytes(cur);
         weights_map.emplace(tensor_name, llama_tensor_weight(files.back().get(), 0, meta.get(), cur));
+        // SLICED-NEW START
         if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
             tensor_name.find(".ffn_up.weight") != std::string::npos ||
             tensor_name.find(".ffn_down.weight") != std::string::npos) {
@@ -532,6 +533,7 @@ llama_model_loader::llama_model_loader(
             }
             slice_tensor_dims(tensor_name, new_ne);
         }
+        // SLICED-NEW END
     }
     uint16_t n_split = 0;
     get_key(llm_kv(LLM_KV_SPLIT_COUNT), n_split, false);
@@ -594,12 +596,6 @@ llama_model_loader::llama_model_loader(
                 // make sure there is no duplicated tensor names
                 if (weights_map.find(tensor_name) != weights_map.end()) {
                     throw std::runtime_error(format("invalid model: tensor '%s' is duplicated", ggml_get_name(cur)));
-                }
-                if (tensor_name.find(".ffn_gate.weight") != std::string::npos ||
-                    tensor_name.find(".ffn_up.weight") != std::string::npos ||
-                    tensor_name.find(".ffn_down.weight") != std::string::npos) {
-                    const struct ggml_tensor * cur = get_tensor_meta(tensor_name.c_str());
-                    LLAMA_LOG("%s: found additonal tensor %s shape: %s\n", __func__, tensor_name.c_str(), llama_format_tensor_shape(cur).c_str());
                 }
                 n_elements += ggml_nelements(cur);
                 n_bytes    += ggml_nbytes(cur);
